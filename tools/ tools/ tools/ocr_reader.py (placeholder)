@@ -1,0 +1,18 @@
+# tools/ocr_reader.py
+# Optional: use pytesseract for actual OCR.
+# pip install pytesseract pillow
+# Ensure tesseract is installed on the machine (system dependency).
+
+def ocr_image_to_text(image_path: str) -> str:
+    """
+    Placeholder. If pytesseract is installed and Tesseract OCR available,
+    implement OCR here. For now, return an empty string.
+    """
+    try:
+        from PIL import Image
+        import pytesseract
+        text = pytesseract.image_to_string(Image.open(image_path))
+        return text
+    except Exception as e:
+        # If OCR not configured, return informative message.
+        return f"[OCR unavailable: {e}]"
