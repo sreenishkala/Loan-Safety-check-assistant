@@ -1,0 +1,100 @@
+# api/app.py
+from flask import Flask, request, jsonify
+import joblib
+import os
+import sys
+from pathlib import Path
+
+# Ensure project root is in path
+ROOT = Path(__file__).resolve().parents[1] 
+sys.path.append(str(ROOT)) 
+
+from agents.extractor import LoanExtractionAgent
+from agents.legality_checker import LegalityCheckerAgent
+from agents.pattern_detector import PatternDetectorAgent
+from agents.risk_scorer import RiskScoringAgent
+from agents.advice_agent import AdviceAgent
+
+app = Flask(__name__)
+
+# Load optional ML model if trained
+MODEL_PATH = Path(ROOT) / "ml" / "rf_model.joblib"
+ENC_PATH = Path(ROOT) / "ml" / "label_encoder.joblib"
+model = None
+encoder = None
+if MODEL_PATH.exists() and ENC_PATH.exists():
+    try:
+        model = joblib.load(MODEL_PATH)
+        encoder = joblib.load(ENC_PATH)
+        print("ML model loaded.")
+    except Exception as e:
+        print("Failed loading model:", e)
+
+# instantiate agents
+extractor = LoanExtractionAgent()
+legal = LegalityCheckerAgent()
+pattern = PatternDetectorAgent()
+scorer = RiskScoringAgent()
+advice = AdviceAgent()
+
+@app.route("/analyze", methods=["POST"])
+def analyze():
+    """
+    Expects JSON:
+    {
+      "text": "Loan text or OCR text",
+      "income": 25000  # optional, for burden calc
+    }
+    """
+    payload = request.json or {}
+    text = payload.get("text", "")
+    income = payload.get("income", None)
+
+    # 1. Extraction
+    loan_data = extractor.extract(text)
+    # add optional income for scoring
+    loan_data["income"] = income
+
+    # 2. Legality & Compliance
+    legality_flags = legal.check_legality(loan_data, text)
+
+    # 3. Pattern Detection
+    predator_flags = pattern.detect(text)
+
+    # 4. Risk Scoring (if ML available, use ML to predict category and map to score)
+    score = scorer.calculate_score(legality_flags, predator_flags, loan_data)
+
+    # Optionally use ML model for category if available
+    ml_prediction = None
+    if model is not None and encoder is not None:
+        try:
+            # construct feature vector used in training
+            feat = [loan_data.get("loan_amount") or 0,
+                    loan_data.get("income") or 0,
+                    float(loan_data.get("interest_rate").replace("%","")) if loan_data.get("interest_rate") else 0,
+                    loan_data.get("tenure")[0] if loan_data.get("tenure") else 1,
+                    loan_data.get("credit_score") if loan_data.get("credit_score") else 600,
+                    loan_data.get("past_defaults") if loan_data.get("past_defaults") else 0,
+                    0.0]
+            import numpy as np
+            x = np.array(feat).reshape(1,-1)
+            pred_idx = model.predict(x)[0]
+            ml_prediction = encoder.inverse_transform([pred_idx])[0]
+        except Exception as e:
+            ml_prediction = f"ML error: {e}"
+
+    # 5. Advice generation
+    advice_out = advice.generate_advice(score, legality_flags, predator_flags)
+
+    out = {
+        "loan_data": loan_data,
+        "legality_flags": legality_flags,
+        "predator_flags": predator_flags,
+        "risk_score_heuristic": score,
+        "ml_prediction": ml_prediction,
+        "advice": advice_out
+    }
+    return jsonify(out), 200
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
