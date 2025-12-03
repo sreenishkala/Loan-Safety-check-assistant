@@ -1,0 +1,53 @@
+<!-- frontend/index.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Bad Loan Trap Detector</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin:auto; }
+    textarea, input { width: 100%; padding: 8px; margin:6px 0; }
+    button { padding: 10px 16px; background:#007bff; color:white; border:none; border-radius:4px; }
+    .result { margin-top:20px; padding:12px; border-radius:6px; background:#f3f3f3; }
+  </style>
+</head>
+<body>
+  <h2>Bad Loan Trap Detector</h2>
+  <p>Paste loan text or OCR text below. Optionally provide monthly income.</p>
+
+  <textarea id="loanText" rows="8" placeholder="Paste loan text or screenshot-ocr text here..."></textarea>
+  Income (monthly, optional): <input id="income" type="number" />
+  <br/>
+  <button onclick="analyze()">Analyze Loan</button>
+
+  <div id="output" class="result" style="display:none;"></div>
+
+<script>
+async function analyze() {
+  const text = document.getElementById("loanText").value;
+  const income = document.getElementById("income").value;
+  if (!text.trim()) { alert("Please paste loan text."); return; }
+
+  const payload = { text };
+  if (income) payload.income = Number(income);
+
+  const res = await fetch("http://localhost:5000/analyze", {
+    method: "POST",
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  const out = document.getElementById("output");
+  out.style.display = "block";
+  out.innerHTML = `<h3>Risk: ${data.advice.category} (score: ${data.risk_score_heuristic})</h3>
+  <b>Reasons:</b><ul>${data.advice.reasons.map(r=>"<li>"+r+"</li>").join("")}</ul>
+  <b>Actions:</b><ul>${data.advice.actions.map(a=>"<li>"+a+"</li>").join("")}</ul>
+  <hr/>
+  <b>Extracted Data:</b><pre>${JSON.stringify(data.loan_data, null, 2)}</pre>
+  <b>ML Prediction (if available):</b> ${data.ml_prediction || "N/A"}`;
+}
+</script>
+</body>
+</html>
+
+v
