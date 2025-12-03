@@ -1,0 +1,5 @@
+ l_out} and encoder to {encoder_out}")
+
+if __name__ == "__main__":
+    df = create_synthetic_dataset()
+    train_and_save_model()
